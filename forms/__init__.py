@@ -2,46 +2,74 @@
 #
 # Copyright 2014 Cole Maclean
 """Tornado forms: simple form validation. 
-Should also work with json objects, dicts, etc.    
+Forms are a collection of fields, passed to the Form class
+constructor.
+Fields have optional requirements that must all pass for
+the form to validate.
 
-    foo_form = Form(test=TextField(required=True, min_length=10))
-    foo_form.validate(self) # in a RequestHandler
-    if foo_form.errors:
-        self.write(errors)
+    foo_form = Form({
+        'test':  TextField(required=True, min_length=10)
+    })
+    
+    clean, errors = foo_form.validate(self.request.arguments)
+    if errors:
+        self.write(foo_form.errors)
     else:
-        ...
+        clean # contains nice data
+                
+with the `with_form` wrapper:
+    
+    @with_form(FooForm)
+    def post(self):
+        if self.is_valid:
+            ...
+        else:
+            self.write(self.errors)
 """
+import functools
 
 import tornado.web
 
+from forms.fields import BaseField
+from forms.utils import FormError
+
 class Form(object):
     
-    def __init__(self, **fields):
-        self.fields = {}
-        self.fields.update(fields)
-        self.errors = {}
-        self.cleaned_data = {}
-    
-    def __getitem__(self, key):
-        return self.fields[key]
-    
-    def clean(self, handler):
-        if isinstance(handler, tornado.web.RequestHandler):
-            getter = lambda k: handler.get_argument(k, default=None, strip=True)
-        else:
-            getter = lambda k: handler.get(k, None)
-            
+    def __init__(self, fields, **kwargs):
+        self.fields = fields
+        self.fields.update(kwargs)
+        
+    def clean(self, raw_data):
+        cleaned_data = {}
         for name, field in self.fields.items():
-            val = getter(name)
-            clean = field.to_python(val)
-            self.cleaned_data[name] = clean
-            
-    def validate(self, handler):
-        if not self.cleaned_data:
-            self.clean(handler)
+            val = raw_data.get(name, None)
+            try:
+                cleaned_data[name] = field.to_python(val)
+            except Exception as e:
+                pass
+        
+        return cleaned_data
+        
+    def validate(self, raw_data):
+        cleaned_data = self.clean(raw_data)
+        errors = {}
         for name, field in self.fields.items():
-            field.validate(self.cleaned_data[name])
-            if field.errors:
-                self.errors[name] = field.errors
-                    
-
+            field_errors = field.validate(cleaned_data.get(name))
+            if field_errors:
+                errors[name] = field_errors
+        
+        return cleaned_data, errors
+        
+def with_form(form=None):
+    """Decorator for handler methods.
+    Automatically sets up the form class given.
+    """
+    def decorator(method):
+        assert form is not None, "Form instance required."
+        @functools.wraps(method)
+        def wrapper(self, *args, **kwargs):
+            self.cleaned_data, self.errors = form.validate(self.request.arguments)
+            self.is_valid = not bool(self.errors)
+            return method(self, *args, **kwargs)
+        return wrapper
+    return decorator

@@ -13,4 +13,7 @@ class FormError(Exception):
         self.params = params
         
     def __str__(self):
-        return self.message.format(**self.params)
+        if self.params:
+            return self.message.format(**self.params)
+        else:
+            return self.message
