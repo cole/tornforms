@@ -8,12 +8,6 @@ Forms are a collection of fields, passed to the Form class
 constructor. Fields have optional requirements that must
 all pass for the form to validate.
 
-
-                
-with the `with_form` wrapper:
-
-            
-
 ### Basic usage
 
 Pass a series of Fields as keyword arguments to a `Form` object.
@@ -44,7 +38,7 @@ and default value arg) returns a tuple of cleaned data and errors (both dicts)
 
 ### `with_form` Decorator
 
-An easier way to use forms with Tornado is the `with_form` decorator.
+An easier way to use tornforms with Tornado is the `with_form` decorator.
     
     @with_form(foo_form)
     def post(self):
