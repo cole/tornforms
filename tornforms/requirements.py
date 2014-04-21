@@ -6,13 +6,13 @@
 Requirement validation.
 """
 
-from forms.utils import FormError
+from tornforms.utils import FormError
 
 class BaseRequirement(object):
-    def __init__(self, *args, message=None):
+    def __init__(self, *args, **kwargs):
         self.args = args
-        if message is not None:
-            self.message = message
+        if kwargs.get('message') is not None:
+            self.message = kwargs.get('message')
             
     def __repr__(self):
         name = self.__class__.__name__.lower()
@@ -21,6 +21,19 @@ class BaseRequirement(object):
         else:
             return name
             
+    def to_dict(self):
+        obj = dict(message=self.message)
+        if len(self.args) == 1:
+            obj['value'] = self.args[0]
+        elif len(self.args) > 1:
+            for x, arg in enumerate(self.args):
+                key = 'value{0}'.format(x)
+                obj[key] = arg
+        return obj
+            
+    def test(self, val):
+        raise NotImplementedError()
+
 class Required(BaseRequirement):
     message = "This field is required."
     
@@ -74,5 +87,9 @@ class Regex(BaseRequirement):
     message = "This entry is invalid."
     
     def test(self, val):
-        if not self.args[0].match(val):
+        try:
+            matches = self.args[0].match(val)
+        except TypeError:
+            raise FormError(self.message, params={})
+        if not matches:
             raise FormError(self.message, params={})

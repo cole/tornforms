@@ -3,56 +3,46 @@
 """Unit tests for form handling."""
 
 import unittest
-from urllib.parse import urlencode
+try:
+    from urllib.parse import urlencode #py3
+except ImportError:
+    from urllib import urlencode #py2
 
 import tornado.web
 import tornado.testing
 
-import forms
-import forms.fields
-import forms.requirements
+from tornforms import *
+import tornforms.requirements
 
-required_form = forms.Form({
-    'test': forms.fields.TextField(required=True)
-})
+required_form =Form(test=TextField(required=True))
 
-not_required_form = forms.Form({
-    'test': forms.fields.TextField(required=False)
-})
+not_required_form =Form(test=TextField(required=False))
 
-custom_msg_form = forms.Form({
-    'test': forms.fields.TextField(required=True, messages={
+custom_msg_form =Form(test=TextField(required=True, messages={
         'required': "HI, we needs some data."
-    })
-})
+    }))
 
-min_length_form = forms.Form({
-    'test': forms.fields.TextField(min_length=6)
-})
+min_length_form =Form(test=TextField(min_length=6))
 
-max_length_form = forms.Form({
-    'test': forms.fields.TextField(max_length=3)
-})
+max_length_form =Form(test=TextField(max_length=3))
 
-min_value_form = forms.Form({
-    'test': forms.fields.IntField(min_value=7)
-})
+min_value_form =Form(test=IntField(min_value=7))
 
-max_value_form = forms.Form({
-    'test': forms.fields.IntField(max_value=168)
-})
+max_value_form =Form(test=IntField(max_value=168))
 
-more_complex_form = forms.Form({
-    'some_text': forms.fields.TextField(required=True),
-    'an_int': forms.fields.IntField(max_value=168)
-})
+more_complex_form =Form(some_text=TextField(required=True),
+    an_int=IntField(max_value=168))
 
+unpythonic_field_names_form =Form(**{
+    '-23432dsf-sd': TextField(required=True),
+    '**dfswdfhe': IntField(max_value=168)
+})
 
 class FormTests(unittest.TestCase):    
     """Basic form handling tests.
     """ 
     def test_cleaned_data(self):
-        encoded = 'Ümläüts'.encode('utf-8')
+        encoded = u'Ümläüts'.encode('utf-8')
         
         cleaned_data, errors = required_form.validate({
             'test': encoded
@@ -60,14 +50,22 @@ class FormTests(unittest.TestCase):
     
         self.assertEqual(len(errors), 0)
         self.assertNotEqual(cleaned_data['test'], encoded)
-        self.assertEqual(cleaned_data['test'], 'Ümläüts')
+        self.assertEqual(cleaned_data['test'], u'Ümläüts')
         
     def test_bad_encoding(self):
         cleaned_data, errors = required_form.validate({
-            'test': 'Ümläüts'.encode('latin-1')
+            'test': u'Ümläüts'.encode('latin-1')
         })
         
         self.assertEqual(len(errors), 1)
+        
+    def test_field_names_allowed(self):
+        cleaned_data, errors = unpythonic_field_names_form.validate({
+            '-23432dsf-sd': 'Hello World',
+            '**dfswdfhe': 18
+        })
+        
+        self.assertEqual(len(errors), 0)
 
 class RequiredTests(unittest.TestCase):    
     """Test each requirement pass/fail.
@@ -84,7 +82,7 @@ class RequiredTests(unittest.TestCase):
         })
         self.assertEqual(len(errors), 1)
         self.assertEqual(errors['test'][0].message,
-            forms.requirements.Required.message)
+           tornforms.requirements.Required.message)
 
     def test_required_custom_message(self):
         cleaned_data, errors = custom_msg_form.validate({})
@@ -106,7 +104,7 @@ class MinMaxLengthTests(unittest.TestCase):
             'test': 'Test'
         })
         self.assertEqual(len(errors), 1)
-        msg = forms.requirements.MinLength.message.format(length=6)
+        msg =tornforms.requirements.MinLength.message.format(length=6)
         self.assertEqual(str(errors['test'][0]), msg)
 
     def test_empty_min_fails(self):
@@ -114,7 +112,7 @@ class MinMaxLengthTests(unittest.TestCase):
             'test': ''
         })
         self.assertEqual(len(errors), 1)
-        msg = forms.requirements.MinLength.message.format(length=6)
+        msg =tornforms.requirements.MinLength.message.format(length=6)
         self.assertEqual(str(errors['test'][0]), msg)
         
     def test_basic_max_passes(self):
@@ -128,7 +126,7 @@ class MinMaxLengthTests(unittest.TestCase):
             'test': 'ffdddsds'
         })
         self.assertEqual(len(errors), 1)
-        msg = forms.requirements.MaxLength.message.format(length=3)
+        msg =tornforms.requirements.MaxLength.message.format(length=3)
         self.assertEqual(str(errors['test'][0]), msg)
         
     def test_empty_max_passes(self):
@@ -158,7 +156,7 @@ class MinMaxValueTests(unittest.TestCase):
             'test': ''
         })
         self.assertEqual(len(errors), 1)
-        msg = forms.requirements.MinValue.message.format(limit=7)
+        msg =tornforms.requirements.MinValue.message.format(limit=7)
         self.assertEqual(str(errors['test'][0]), msg)
         
     def test_basic_max_passes(self):
@@ -172,7 +170,7 @@ class MinMaxValueTests(unittest.TestCase):
             'test': '655'
         })
         self.assertEqual(len(errors), 1)
-        msg = forms.requirements.MaxValue.message.format(limit=168)
+        msg =tornforms.requirements.MaxValue.message.format(limit=168)
         self.assertEqual(str(errors['test'][0]), msg)
         
     def test_empty_max_passes(self):
@@ -183,12 +181,21 @@ class MinMaxValueTests(unittest.TestCase):
 
 class FormWrapperHandler(tornado.web.RequestHandler):
     
-    @forms.with_form(more_complex_form)
+    @with_form(more_complex_form)
     def post(self):
-        if self.is_valid:
+        if self.form.is_valid:
             self.write("OK!")
         else:
-            self.write(', '.join(self.errors.keys()))
+            self.write(', '.join(self.form.errors.keys()))
+            
+class NamedFormHandler(tornado.web.RequestHandler):
+    
+    @with_form(more_complex_form, name='foobar')
+    def post(self):
+        if self.foobar.is_valid:
+            self.write("OK!")
+        else:
+            self.write(', '.join(self.foobar.errors.keys()))
             
 class FormWrapperTests(tornado.testing.AsyncHTTPTestCase):
     def get_app(self):
@@ -198,6 +205,7 @@ class FormWrapperTests(tornado.testing.AsyncHTTPTestCase):
         }
         return tornado.web.Application([
             (r"/form_post", FormWrapperHandler),
+            (r"/named_post", NamedFormHandler),
         ], **settings)
 
     @tornado.testing.gen_test
@@ -221,6 +229,16 @@ class FormWrapperTests(tornado.testing.AsyncHTTPTestCase):
         error_fields = post.body.decode('utf-8').split(', ')
         self.assertTrue('some_text' in error_fields)
         self.assertTrue('an_int' in error_fields)
+        
+    @tornado.testing.gen_test
+    def test_named_form_handler_pass(self):
+        data = {
+            'some_text': 'The quick brown fox.',
+            'an_int': 123
+        }
+        post = yield self.http_client.fetch(self.get_url('/named_post'),
+            method="POST", body=urlencode(data))
+        self.assertEqual(post.body.decode('utf-8'), "OK!")
 
 def suite():
     suite = unittest.TestLoader().loadTestsFromTestCase(FormTests)
